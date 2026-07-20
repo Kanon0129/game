@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Top Three Live</title><link rel="stylesheet" href="./styles.css"></head>
+<body><main class="shell">
+<header class="topbar"><div class="brand">TOP THREE LIVE</div><div class="tag" id="statusTag">Not connected</div></header>
+<div id="errorBox" class="error hidden"></div>
+
+<section id="homeView" class="panel">
+<h1>Guess their top three.</h1><p class="muted">Create a room, invite friends with a code, and answer together in real time.</p>
+<div class="home-actions"><button class="btn accent" id="showCreateBtn">Create a room</button><button class="btn secondary" id="showJoinBtn">Join a room</button></div>
+<div id="createBox" class="stack hidden" style="margin-top:18px"><label>Your name<input id="createName" maxlength="24"></label><button class="btn accent" id="createRoomBtn">Create room</button></div>
+<div id="joinBox" class="stack hidden" style="margin-top:18px"><label>Your name<input id="joinName" maxlength="24"></label><label>Room code<input id="joinCode" maxlength="6"></label><button class="btn accent" id="joinRoomBtn">Join room</button></div>
+</section>
+
+<section id="lobbyView" class="panel hidden">
+<p class="muted" style="text-align:center;margin-bottom:0">ROOM CODE</p><div class="room-code" id="roomCode"></div>
+<p class="muted" style="text-align:center">Everyone opens the website and joins with the same code.</p>
+<div class="tabs" id="hostTabs"><button class="tab active" data-tab="players">Players</button><button class="tab" data-tab="custom">Custom cards</button></div>
+<div id="playersTab"><div class="player-grid" id="lobbyPlayers"></div><div class="row" style="margin-top:18px"><button class="btn accent hidden" id="startGameBtn">Start game</button><button class="btn secondary" id="leaveBtn">Leave room</button></div></div>
+<div id="customTab" class="hidden"><p class="muted">Add custom cards. Each needs exactly seven options.</p>
+<div class="grid2"><label>Question<input id="customQuestion"></label><label>Seven options, one per line<textarea id="customOptions"></textarea></label></div>
+<div class="row" style="margin-top:12px"><button class="btn accent" id="addCardBtn">Add card</button><button class="btn secondary" id="downloadDeckBtn">Download custom deck</button><label class="btn secondary">Import deck<input id="importDeckInput" type="file" accept=".json" hidden></label></div>
+<div class="stack" id="customCardList" style="margin-top:16px"></div></div>
+</section>
+
+<section id="gameView" class="hidden"><div class="question"><small id="roundLabel"></small><h2 id="questionText"></h2></div>
+<div class="panel"><div class="row" style="justify-content:space-between;margin-bottom:12px"><strong id="instruction"></strong><span class="tag" id="answerCount"></span></div>
+<div class="progress"><div id="answerProgress"></div></div><div id="optionArea" class="options" style="margin-top:16px"></div>
+<div class="row" style="margin-top:14px"><button class="btn secondary" id="clearSelectionBtn">Clear</button><button class="btn accent" id="submitAnswerBtn" disabled>Submit ranking</button></div></div></section>
+
+<section id="waitingView" class="panel hidden"><div class="waiting"><h2>Your answer is in.</h2><div class="spinner"></div><p class="muted" id="waitingText"></p><div class="progress"><div id="waitingProgress"></div></div></div></section>
+
+<section id="revealView" class="panel hidden"><h2>Reveal</h2><div class="answer-box"><strong id="subjectAnswerTitle"></strong><div class="rank-list" id="trueRanking"></div></div>
+<div id="roundScores"></div><div class="row" style="margin-top:16px"><button class="btn accent hidden" id="nextRoundBtn">Next question</button><span class="muted" id="hostWaitingText">Waiting for the host…</span></div></section>
+</main><script type="module" src="./app.js"></script></body></html>
