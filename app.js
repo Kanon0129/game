@@ -5,7 +5,7 @@ import {DEFAULT_CARDS} from "./questions.js";
 const $=id=>document.getElementById(id),letters=["A","B","C","D","E","F","G"];
 const configured=!SUPABASE_URL.includes("PASTE_")&&!SUPABASE_ANON_KEY.includes("PASTE_");
 const db=configured?createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
-const s={session:localStorage.tt_session||crypto.randomUUID(),room:null,me:null,players:[],round:null,answers:[],selection:[],selectionRoundId:null,channel:null,timer:null};
+const s={session:localStorage.tt_session||crypto.randomUUID(),room:null,me:null,players:[],round:null,answers:[],selection:[],selectionRoundId:null,channel:null,timer:null,refreshing:false,refreshQueued:false};
 localStorage.tt_session=s.session;
 const esc=v=>{const d=document.createElement("div");d.textContent=v;return d.innerHTML};
 function err(m){$("errorBox").textContent=m;$("errorBox").classList.toggle("hidden",!m)}
@@ -16,6 +16,10 @@ const host=()=>s.me?.id===s.room?.host_player_id,subject=()=>s.players.find(p=>p
 function points(g,t){let n=0;g.forEach((v,i)=>n+=v===t[i]?2:t.includes(v)?1:0);return n}
 function rankHTML(r,c=null){return r.map((x,i)=>`<span class="rank-chip ${c&&c[i]===x?"correct":""}">#${i+1} ${letters[x]} — ${esc(s.round.card.options[x])}</span>`).join("")}
 function configuredOrError(){if(configured)return true;err("Add your Supabase URL and anon key to config.js first.");return false}
+function selectionKey(roundId=s.round?.id){return roundId&&s.me?.id?`tt_selection_${roundId}_${s.me.id}`:null}
+function saveSelection(){const k=selectionKey();if(k)sessionStorage.setItem(k,JSON.stringify(s.selection))}
+function loadSelection(){const k=selectionKey();if(!k)return [];try{const v=JSON.parse(sessionStorage.getItem(k)||"[]");return Array.isArray(v)?v.filter(Number.isInteger).slice(0,3):[]}catch{return []}}
+function clearSavedSelection(roundId=s.round?.id){const k=selectionKey(roundId);if(k)sessionStorage.removeItem(k)}
 
 async function createRoom(){
  if(!configuredOrError())return;const name=$("createName").value.trim();if(!name)return err("Enter your name.");
@@ -41,10 +45,21 @@ async function subscribe(){
 }
 async function refresh(){
  if(!s.room)return;
- const [r,p,q]=await Promise.all([db.from("rooms").select("*").eq("id",s.room.id).single(),db.from("players").select("*").eq("room_id",s.room.id).eq("active",true).order("joined_at"),db.from("rounds").select("*").eq("room_id",s.room.id).order("round_number",{ascending:false}).limit(1).maybeSingle()]);
- if(r.data)s.room=r.data;s.players=p.data||[];s.me=s.players.find(x=>x.session_id===s.session)||s.me;s.round=q.data||null;
- if(s.round){const a=await db.from("answers").select("*").eq("round_id",s.round.id);s.answers=a.data||[]}else s.answers=[];
- render()
+ if(s.refreshing){s.refreshQueued=true;return}
+ s.refreshing=true;
+ const roomId=s.room.id;
+ try{
+  const [r,p,q]=await Promise.all([db.from("rooms").select("*").eq("id",roomId).single(),db.from("players").select("*").eq("room_id",roomId).eq("active",true).order("joined_at"),db.from("rounds").select("*").eq("room_id",roomId).order("round_number",{ascending:false}).limit(1).maybeSingle()]);
+  if(!s.room||s.room.id!==roomId)return;
+  if(r.data)s.room=r.data;s.players=p.data||[];s.me=s.players.find(x=>x.session_id===s.session)||s.me;
+  const nextRound=q.data||null;
+  if(nextRound?.id!==s.round?.id){s.round=nextRound;s.selectionRoundId=nextRound?.id||null;s.selection=nextRound?loadSelection():[]}else s.round=nextRound;
+  if(s.round){const a=await db.from("answers").select("*").eq("round_id",s.round.id);s.answers=a.data||[]}else s.answers=[];
+  render()
+ }finally{
+  s.refreshing=false;
+  if(s.refreshQueued){s.refreshQueued=false;queueMicrotask(refresh)}
+ }
 }
 function render(){
  $("statusTag").textContent=s.room?`Room ${s.room.code}`:configured?"Ready":"Setup needed";
@@ -67,16 +82,16 @@ async function start(){
 }
 function game(){
  show("gameView");
- if(s.selectionRoundId!==s.round.id){s.selection=[];s.selectionRoundId=s.round.id}
+ if(s.selectionRoundId!==s.round.id){s.selectionRoundId=s.round.id;s.selection=loadSelection()}
  const sub=subject(),am=sub.id===s.me.id;
  $("roundLabel").textContent=`Round ${s.round.round_number} · ${sub.name}'s answers`;$("questionText").textContent=s.round.card.question;
  $("instruction").textContent=am?"Choose your real top three, in order.":`Guess ${sub.name}'s top three, in order.`;options();counts()
 }
 function options(){
  $("optionArea").innerHTML=s.round.card.options.map((t,i)=>{const n=s.selection.indexOf(i);return `<button class="option ${n>=0?"selected":""}" data-i="${i}"><span class="letter">${letters[i]}</span><span>${esc(t)}</span>${n>=0?`<span class="rank">#${n+1}</span>`:""}</button>`}).join("");
- document.querySelectorAll(".option").forEach(b=>b.onclick=()=>{const i=+b.dataset.i,n=s.selection.indexOf(i);if(n>=0)s.selection.splice(n,1);else if(s.selection.length<3)s.selection.push(i);options()});$("submitAnswerBtn").disabled=s.selection.length!==3
+ document.querySelectorAll(".option").forEach(b=>b.onclick=()=>{const i=+b.dataset.i,n=s.selection.indexOf(i);if(n>=0)s.selection.splice(n,1);else if(s.selection.length<3)s.selection.push(i);saveSelection();options()});$("submitAnswerBtn").disabled=s.selection.length!==3
 }
-async function submit(){if(s.selection.length!==3)return;const r=await db.from("answers").insert({room_id:s.room.id,round_id:s.round.id,player_id:s.me.id,ranking:s.selection});if(r.error&&!r.error.message.includes("duplicate"))err(r.error.message);s.selection=[];s.selectionRoundId=null;refresh()}
+async function submit(){if(s.selection.length!==3)return;const ranking=[...s.selection];const r=await db.from("answers").insert({room_id:s.room.id,round_id:s.round.id,player_id:s.me.id,ranking});if(r.error&&!r.error.message.includes("duplicate"))return err(r.error.message);clearSavedSelection();s.selection=[];refresh()}
 function counts(){const n=s.answers.length,t=s.players.length,p=Math.round(n/t*100);$("answerCount").textContent=`${n}/${t} answered`;$("answerProgress").style.width=$("waitingProgress").style.width=p+"%";$("waitingText").textContent=n===t?"Everyone has answered. Revealing…":`Waiting for ${t-n} ${t-n===1?"person":"people"}…`;if(n===t&&host()&&s.round.status==="answering")doReveal()}
 function waiting(){show("waitingView");counts()}
 async function doReveal(){
@@ -106,7 +121,7 @@ async function leave(){if(s.me)await db.from("players").update({active:false}).e
 $("showCreateBtn").onclick=()=>{$("createBox").classList.remove("hidden");$("joinBox").classList.add("hidden")};
 $("showJoinBtn").onclick=()=>{$("joinBox").classList.remove("hidden");$("createBox").classList.add("hidden")};
 $("createRoomBtn").onclick=createRoom;$("joinRoomBtn").onclick=joinRoom;$("startGameBtn").onclick=start;$("submitAnswerBtn").onclick=submit;
-$("clearSelectionBtn").onclick=()=>{s.selection=[];options()};$("nextRoundBtn").onclick=next;$("addCardBtn").onclick=addCard;$("downloadDeckBtn").onclick=download;
+$("clearSelectionBtn").onclick=()=>{s.selection=[];saveSelection();options()};$("nextRoundBtn").onclick=next;$("addCardBtn").onclick=addCard;$("downloadDeckBtn").onclick=download;
 $("importDeckInput").onchange=e=>e.target.files[0]&&importDeck(e.target.files[0]);$("leaveBtn").onclick=leave;
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));$("playersTab").classList.toggle("hidden",t.dataset.tab!=="players");$("customTab").classList.toggle("hidden",t.dataset.tab!=="custom")});
 if(!configured)err("Setup required: add Supabase details to config.js and run supabase.sql.");render()
