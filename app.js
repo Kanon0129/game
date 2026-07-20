@@ -5,7 +5,7 @@ import {DEFAULT_CARDS} from "./questions.js";
 const $=id=>document.getElementById(id),letters=["A","B","C","D","E","F","G"];
 const configured=!SUPABASE_URL.includes("PASTE_")&&!SUPABASE_ANON_KEY.includes("PASTE_");
 const db=configured?createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
-const s={session:localStorage.tt_session||crypto.randomUUID(),room:null,me:null,players:[],round:null,answers:[],selection:[],channel:null,timer:null};
+const s={session:localStorage.tt_session||crypto.randomUUID(),room:null,me:null,players:[],round:null,answers:[],selection:[],selectionRoundId:null,channel:null,timer:null};
 localStorage.tt_session=s.session;
 const esc=v=>{const d=document.createElement("div");d.textContent=v;return d.innerHTML};
 function err(m){$("errorBox").textContent=m;$("errorBox").classList.toggle("hidden",!m)}
@@ -66,7 +66,9 @@ async function start(){
  await db.from("rooms").update({status:"playing",current_round:1,deck}).eq("id",s.room.id);refresh()
 }
 function game(){
- show("gameView");s.selection=[];const sub=subject(),am=sub.id===s.me.id;
+ show("gameView");
+ if(s.selectionRoundId!==s.round.id){s.selection=[];s.selectionRoundId=s.round.id}
+ const sub=subject(),am=sub.id===s.me.id;
  $("roundLabel").textContent=`Round ${s.round.round_number} · ${sub.name}'s answers`;$("questionText").textContent=s.round.card.question;
  $("instruction").textContent=am?"Choose your real top three, in order.":`Guess ${sub.name}'s top three, in order.`;options();counts()
 }
@@ -74,7 +76,7 @@ function options(){
  $("optionArea").innerHTML=s.round.card.options.map((t,i)=>{const n=s.selection.indexOf(i);return `<button class="option ${n>=0?"selected":""}" data-i="${i}"><span class="letter">${letters[i]}</span><span>${esc(t)}</span>${n>=0?`<span class="rank">#${n+1}</span>`:""}</button>`}).join("");
  document.querySelectorAll(".option").forEach(b=>b.onclick=()=>{const i=+b.dataset.i,n=s.selection.indexOf(i);if(n>=0)s.selection.splice(n,1);else if(s.selection.length<3)s.selection.push(i);options()});$("submitAnswerBtn").disabled=s.selection.length!==3
 }
-async function submit(){if(s.selection.length!==3)return;const r=await db.from("answers").insert({room_id:s.room.id,round_id:s.round.id,player_id:s.me.id,ranking:s.selection});if(r.error&&!r.error.message.includes("duplicate"))err(r.error.message);s.selection=[];refresh()}
+async function submit(){if(s.selection.length!==3)return;const r=await db.from("answers").insert({room_id:s.room.id,round_id:s.round.id,player_id:s.me.id,ranking:s.selection});if(r.error&&!r.error.message.includes("duplicate"))err(r.error.message);s.selection=[];s.selectionRoundId=null;refresh()}
 function counts(){const n=s.answers.length,t=s.players.length,p=Math.round(n/t*100);$("answerCount").textContent=`${n}/${t} answered`;$("answerProgress").style.width=$("waitingProgress").style.width=p+"%";$("waitingText").textContent=n===t?"Everyone has answered. Revealing…":`Waiting for ${t-n} ${t-n===1?"person":"people"}…`;if(n===t&&host()&&s.round.status==="answering")doReveal()}
 function waiting(){show("waitingView");counts()}
 async function doReveal(){
